@@ -12,14 +12,10 @@ var optimist = require('optimist'),
     .alias({
         'p': 'port',
         'h': 'host',
-        's': 'sslCert',
-        'k': 'sslKey',
         'l': 'listen',
         'c': 'configFile',
     })
     .describe({
-        's': 'Path to ssl certificate file',
-        'k': 'Path to ssl key file',
         'p': 'MQTT port to connect to',
         'h': 'Hostname of MQTT server',
         'l': 'WebSocket port to listen on',
@@ -67,28 +63,21 @@ function parseCommandLine(args, config) {
     if (args.l || args.listen) {
         config.websocket.port = args.l || args.listen;
     }
-    if (args.s || args.sslCert) {
-        config.websocket.ssl_cert = args.s || args.sslCert;
-    }
-    if (args.k || args.sslKey) {
-        config.websocket.ssl_key = args.k || args.sslKey;
-    }
 
     return config;
 }
 
 function getErrnoDescription(err) {
     if (!err.errno) return undefined;
-    var e;
     if (typeof err.errno == 'number') {
-        e = errno.errno[err.errno];
+        var e = errno.errno[err.errno];
         if (e) {
             return e.description;
         } else {
             return undefined;
         }
     } else if (typeof err.errno == 'string') {
-        for (e in errno.errno) {
+        for (var e in errno.errno) {
             if (errno.errno[e].code == err.code) {
                 return errno.errno[e].description;
             }
@@ -98,7 +87,7 @@ function getErrnoDescription(err) {
 }
 
 function logError(err, message) {
-    if (err.syscall) {
+    if (err.syscall != undefined) {
         var description = getErrnoDescription(err) || err.code;
         logger.error("%s on %s: %s", message, err.syscall, description);
     } else {
@@ -111,19 +100,21 @@ function run(config) {
     if (config.log4js) {
         log4js.configure(config.log4js);
     }
-
+   
     // Create our bridge
     bridge = mqttws.createBridge(config);
     logger.info("Listening for incoming WebSocket connections on port %d",
         bridge.port);
-
+       
     // Set up error handling
     bridge.on('error', function(err) {
+        console.log(err)
         logError(err, "WebSocket Error");
     });
 
     // Handle incoming WS connection
     bridge.on('connection', function(ws) {
+       
         // URL-decode the URL, and use the URI part as the subscription topic
         logger.info("WebSocket connection from %s received", ws.connectString);
 
@@ -135,9 +126,11 @@ function run(config) {
 
         // Parse the URL
         var parsed = url.parse(ws.upgradeReq.url, true);
+        //console.log(parsed)
         // Connect to the MQTT server using the URL query as options
         var mqtt = bridge.connectMqtt(parsed.query);
         mqtt.topic = decodeURIComponent(parsed.pathname.substring(1));
+        mqtt.isWildcardTopic = (mqtt.topic.match(/[\+#]/) != null);
 
         ws.on('close', function() {
             logger.info("WebSocket client %s closed", ws.connectString);
@@ -145,17 +138,10 @@ function run(config) {
         });
 
         ws.on('message', function(message) {
-            message = new Buffer(message);
-            var char = "";
-            var topic = "";
-            var offset = 0;
-            while(char != "|" && offset < message.length){
-                topic += char;
-                char = String.fromCharCode(message.readUInt16LE(offset));
-                offset += 2;
-            }
-            logger.info("WebSocket client %s publishing to %s", ws.connectString, topic);
-            mqtt.publish(topic, message.slice(offset), mqtt.options);
+            console.log("WebSocket client %s publishing '%s' to %s",
+                ws.connectString, message, mqtt.topic);
+               // console.log('.......message', message);
+            mqtt.publish(mqtt.topic, message, mqtt.options);
         });
 
         mqtt.on('error', function(err) {
@@ -165,6 +151,7 @@ function run(config) {
         mqtt.on('connect', function() {
             logger.info("Connected to MQTT server at %s:%d", mqtt.host, mqtt.port);
             logger.info("WebSocket client %s subscribing to '%s'", ws.connectString, mqtt.topic);
+            console.info("WebSocket client %s subscribing to '%s'", ws.connectString, mqtt.topic);
             mqtt.subscribe(mqtt.topic);
         });
 
@@ -175,8 +162,8 @@ function run(config) {
         });
 
         mqtt.on('message', function(topic, message, packet) {
-            ws.send(Buffer.concat([new Buffer(topic + "|", "utf16le"), new Buffer(message)]), {binary: true, mask: false});
+            console.log('mqtt message', util.format("%s: %s", topic, message))
+            ws.send(util.format('{"title":"%s","message":%s}', topic, message), self.options);
         });
     });
-}
-
+};

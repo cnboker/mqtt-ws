@@ -1,22 +1,15 @@
 {
     "mqtt": {
-        "host": "mqttHost",
+        "host": "203.81.178.11",
         "port": 1883
     },
     "websocket": {
         "port": 8080
-    },
-    "log4js": {
-  		"appenders": [
-		      {
-		          "type": "console"
-		      },
-		      {
-		          "type": "file",
-		          "filename": "mqttwsBridge.log",
-		          "maxLogSize": 1024,
-		          "backups": 3
-		      }
-		 ]
-    }
+	},
+	"log4js": {
+		"appenders": { "cheese": { "type": "file", "filename": "cheese.log" } },
+		"categories": { "default": { "appenders": ["cheese"], "level": "error" } }
+	  }
+  
+  
 }
